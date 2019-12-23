@@ -1,37 +1,76 @@
-#!/usr/bin/env bash
+#!/bin/bash
 
 CURL_OPTION="-v"
 
 set -e
-exec 3>&1
-exec 1>&2
+
+cd "${1}"
+
+exec 3>&1 # make stdout available as fd 3 for the result
+exec 1>&2 # redirect all output to stderr for logging
 #set -x
 
-function evaluate {
-  __var=$1
-  # escape ( and ) from markdown
-  __var="${__var//\(/\\(}"
-  __var="${__var//\)/\\)}"
-  __var="${__var//\:/\\:}"
-  __var=`eval echo $__var`
-  echo $__var
-}
-
 payload=$(mktemp /tmp/resource-in.XXXXXX)
+actions_file=$(mktemp /tmp/actions.XXXXXX)
 cat > "${payload}" <&0
 
-format="markdown"
+timestamp="$(jq -n "{version:{timestamp:\"$(date +%s)\"}}")"
+
+disable="$(jq -r '.source.disable' < "${payload}")"
+if [[ "$disable" == "true" ]]
+then
+#    echo "$timestamp" >&3
+    exit 0
+fi
+
 color="$(jq -r '.params.color // "00EA43"' < "${payload}")"
+text_file="$(jq -r '.params.text_file // ""' < "${payload}")"
+text="$(jq -r '(.params.text // "${TEXT_FILE_CONTENT}")' < "${payload}")"
+icon_url="$(jq '(.params.icon_url // null)' < "${payload}")"
+build_status="$(jq -r '(.params.build_status // null)' < "${payload}")"
+title="$(jq -r '.params.title // "Concourse CI"' < "${payload}")"
+activitySubtitle="$(jq -r '.params.activitySubtitle // ""' < "${payload}")"
+facts="$(jq -r '.params.facts // []' < "${payload}")"
+potentialAction="$(jq -r '.params.potentialAction // []' < "${payload}")"
 
-actionName=$(evaluate "$(jq -r '.params.actionName // "Open Concourse"' < "${payload}")")
+export TEXT_FILE_CONTENT=""
+[[ -n "${text_file}" && ! -f "${text_file}" ]] && text_file=""
+[[ -n "${text_file}" && -f "${text_file}" ]] && TEXT_FILE_CONTENT="$(cat "${text_file}")"
 
-actionTarget=$(evaluate "$(jq -r '.params.actionTarget // "https://concourse.ci"' < "${payload}")")
+text=$(echo -n "$text" | envsubst)
+text_interpolated=$(echo -n "$text" |envsubst)
 
-title=$(evaluate "$(jq -r '.params.title // "Concourse CI"' < "${payload}")")
+potentialAction=$(echo -n "$potentialAction" | envsubst)
 
-text=$(evaluate "$(jq -r '.params.text // "NO MSG"' < "${payload}")")
+actionName=$(echo -n "$actionName" | envsubst)
+actionTarget=$(echo -n "$actionTarget" | envsubst)
+title=$(echo -n "$title" | envsubst)
+activitySubtitle=$(echo -n "$activitySubtitle" | envsubst)
 
-body="{\"TextFormat\": \"${format}\", \"text\": \"${text}\", \"title\": \"${title}\", \"potentialAction\": [{\"@context\": \"https://schema.org\", \"@type\": \"ViewAction\", \"name\": \"${actionName}\", \"target\": [\"${actionTarget}\"]}]}"
+activityTitle=$(echo ${BUILD_PIPELINE_NAME}/${BUILD_JOB_NAME}/${BUILD_NAME} - ${build_status})
+
+body="$(cat <<EOF
+{
+	"@type": "MessageCard",
+	"@context": "https://schema.org/extensions",
+	"summary": "Concourse CI",
+	"themeColor": "${color}",
+	"title": "${title}",
+	"sections": [
+		{
+			"activityTitle": "${activityTitle}",
+			"activitySubtitle": "$(date)",
+			"activityImage": "${icon_url}",
+			"facts": ${facts},
+			"text": "${text_interpolated}"
+		}
+	],
+	"potentialAction": ${potentialAction}
+}
+
+EOF
+)"
+
 
 webhook_url="$(jq -r '.source.url' < "${payload}")"
 redacted_webhook_url=$(echo "${webhook_url}" | sed -e 's#/\([^/\.]\{2\}\)[^/.]\{5,\}\([^/.]\{2\}\)#/\1…\2#g' | jq -R .)
@@ -45,6 +84,8 @@ metadata="$(cat <<EOF
   "version": {"timestamp": "${timestamp}"},
   "metadata": [
     {"name": "url", "value": ${redacted_webhook_url}},
+    {"name": "actionName", "value": "${actionName}"},
+    {"name": "actionTarget", "value": "${actionTarget}"},
     {"name": "BUILD_PIPELINE_NAME", "value": "${BUILD_PIPELINE_NAME}"}
   ]
 }
@@ -52,4 +93,3 @@ EOF
 )"
 
 echo "$metadata"  >&3
-
