@@ -17,11 +17,15 @@ cat > "${payload}" <&0
 timestamp="$(jq -n "{version:{timestamp:\"$(date +%s)\"}}")"
 
 disable="$(jq -r '.source.disable' < "${payload}")"
-if [[ "$disable" == "true" ]]
+if [[ "${disable}" == "true" ]]
 then
 #    echo "$timestamp" >&3
     exit 0
 fi
+
+webhook_url="$(jq -r '.source.url' < "${payload}")"
+allow_insecure="$(jq -r '.source.insecure // "false"' < "${payload}")"
+raw_ca_certs=$(jq -r '.source.ca_certs // []' < $payload)
 
 color="$(jq -r '.params.color // "00EA43"' < "${payload}")"
 text_file="$(jq -r '.params.text_file // ""' < "${payload}")"
@@ -32,6 +36,30 @@ title="$(jq -r '.params.title // "Concourse CI"' < "${payload}")"
 activitySubtitle="$(jq -r '.params.activitySubtitle // ""' < "${payload}")"
 facts="$(jq -r '.params.facts // []' < "${payload}")"
 potentialAction="$(jq -r '.params.potentialAction // []' < "${payload}")"
+
+proxy="$(jq -r '.source.proxy // "null"' < "${payload}")"
+proxy_https_tunnel="$(jq -r '.source.proxy_https_tunnel // "false"' < "${payload}")"
+
+# Read the env_file and export it in the current console
+env_file="$(jq -r '.params.env_file // ""' < "${payload}")"
+if [ -f "$env_file" ]; then
+  # export key=value, when value as space but no quotes
+  search_key_val='(\w+)=([^\n]+)'
+
+  source <(sed -E -n -r "s/$search_key_val/export \1=\"\2\"/ p" "$env_file")
+fi
+
+cert_count="$(echo $raw_ca_certs | jq -r '. | length')"
+if [[ ${cert_count} -gt 0 ]]
+then
+  cert_dir="/usr/local/share/ca-certificates/"
+  mkdir -p "$cert_dir"
+  for i in $(seq 0 $(expr "$cert_count" - 1));
+  do
+    echo $raw_ca_certs | jq -r .[$i].cert >> "${cert_dir}/ca-cert-$(echo $raw_ca_certs | jq -r .[$i].domain).crt"
+  done
+  update-ca-certificates
+fi
 
 export TEXT_FILE_CONTENT=""
 [[ -n "${text_file}" && ! -f "${text_file}" ]] && text_file=""
@@ -72,7 +100,7 @@ EOF
 )"
 
 
-webhook_url="$(jq -r '.source.url' < "${payload}")"
+
 redacted_webhook_url=$(echo "${webhook_url}" | sed -e 's#/\([^/\.]\{2\}\)[^/.]\{5,\}\([^/.]\{2\}\)#/\1…\2#g' | jq -R .)
 
 url_path="$(echo ${webhook_url} | sed -e "s/https\{0,1\}:\/\/[^\/]*\(\/[^?&#]*\).*/\1/")"
@@ -92,4 +120,4 @@ metadata="$(cat <<EOF
 EOF
 )"
 
-echo "$metadata"  >&3
+echo "$metadata" >&3
