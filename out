@@ -30,7 +30,7 @@ raw_ca_certs=$(jq -r '.source.ca_certs // []' < $payload)
 color="$(jq -r '.params.color // "00EA43"' < "${payload}")"
 text_file="$(jq -r '.params.text_file // ""' < "${payload}")"
 text="$(jq -r '(.params.text // "${TEXT_FILE_CONTENT}")' < "${payload}")"
-icon_url="$(jq '(.params.icon_url // null)' < "${payload}")"
+icon_url="$(jq -r '(.params.icon_url // null)' < "${payload}")"
 build_status="$(jq -r '(.params.build_status // null)' < "${payload}")"
 title="$(jq -r '.params.title // "Concourse CI"' < "${payload}")"
 activitySubtitle="$(jq -r '.params.activitySubtitle // ""' < "${payload}")"
@@ -68,6 +68,8 @@ export TEXT_FILE_CONTENT=""
 text=$(echo -n "$text" | envsubst)
 text_interpolated=$(echo -n "$text" |envsubst)
 
+text_interpolated="$(echo "${text_interpolated}" | jq -R -s .)"
+
 potentialAction=$(echo -n "$potentialAction" | envsubst)
 
 actionName=$(echo -n "$actionName" | envsubst)
@@ -95,7 +97,6 @@ body="$(cat <<EOF
 	],
 	"potentialAction": ${potentialAction}
 }
-
 EOF
 )"
 
