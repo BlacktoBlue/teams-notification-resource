@@ -68,7 +68,7 @@ export TEXT_FILE_CONTENT=""
 text=$(echo -n "$text" | envsubst)
 text_interpolated=$(echo -n "$text" |envsubst)
 
-text_interpolated="$(echo "${text_interpolated}" | jq -R -s .)"
+text_interpolated="$(echo "${text_interpolated}" | jq -r -R -s .)"
 
 potentialAction=$(echo -n "$potentialAction" | envsubst)
 
