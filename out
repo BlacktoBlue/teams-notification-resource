@@ -70,7 +70,7 @@ text_interpolated=$(echo -n "$text" |envsubst)
 facts=$(echo -n "$facts" | envsubst)
 
 text_interpolated="$(echo "${text_interpolated}" | jq -r -R -s .)"
-text_interpolated="${text_interpolated//$'\n'/"\\r\\n"}"
+text_interpolated="${text_interpolated//$'\n'/"\\n\\n"}"
 
 potentialAction=$(echo -n "$potentialAction" | envsubst)
 
