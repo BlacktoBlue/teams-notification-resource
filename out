@@ -1,6 +1,6 @@
 #!/bin/bash
 
-CURL_OPTION="-v"
+CURL_OPTION="-v -f"
 
 set -e
 
@@ -8,11 +8,16 @@ cd "${1}"
 
 exec 3>&1 # make stdout available as fd 3 for the result
 exec 1>&2 # redirect all output to stderr for logging
-#set -x
 
 payload=$(mktemp /tmp/resource-in.XXXXXX)
 actions_file=$(mktemp /tmp/actions.XXXXXX)
 cat > "${payload}" <&0
+
+debug="$(jq -r '.params.debug // "false"' < "${payload}")"
+if [[ "${debug}" == "true" ]]
+then
+  set -x
+fi
 
 timestamp="$(jq -n "{version:{timestamp:\"$(date +%s)\"}}")"
 
