@@ -41,6 +41,11 @@ title="$(jq -r '.params.title // "Concourse CI"' < "${payload}")"
 activitySubtitle="$(jq -r '.params.activitySubtitle // ""' < "${payload}")"
 facts="$(jq -r '.params.facts // []' < "${payload}")"
 potentialAction="$(jq -r '.params.potentialAction // []' < "${payload}")"
+sendBlankMessage="$(jq -r '.params.sendMessageWhenBlank' < "${payload}")"
+if [[ -z ${sendBlankMessage} ]] ;
+then
+ ${sendBlankMessage}=true
+fi
 
 proxy="$(jq -r '.source.proxy // "null"' < "${payload}")"
 proxy_https_tunnel="$(jq -r '.source.proxy_https_tunnel // "false"' < "${payload}")"
@@ -107,7 +112,10 @@ body="$(cat <<EOF
 EOF
 )"
 
-
+#Exit without sending to teams
+#If there is no message content
+if [[ -z "$text_interpolated" && ${sendBlankMessage} == true ]] ||  [[ ! -z "$text_interpolated" ]] ;
+then
 
 redacted_webhook_url=$(echo "${webhook_url}" | sed -e 's#/\([^/\.]\{2\}\)[^/.]\{5,\}\([^/.]\{2\}\)#/\1…\2#g' | jq -R .)
 
@@ -127,5 +135,7 @@ metadata="$(cat <<EOF
 }
 EOF
 )"
-
 echo "$metadata" >&3
+else
+echo "$timestamp" >&3
+fi
